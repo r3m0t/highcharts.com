@@ -197,6 +197,7 @@ Series.prototype = {
 			lastNull = -1,
 			segments = [],
 			i,
+			segment,
 			points = series.points,
 			pointsLength = points.length;
 
@@ -219,11 +220,15 @@ Series.prototype = {
 				each(points, function (point, i) {
 					if (point.y === null) {
 						if (i > lastNull + 1) {
-							segments.push(points.slice(lastNull + 1, i));
+							segment = points.slice(lastNull + 1, i);
+							segment.endingPoint = point;
+							segments.push(segment);
 						}
 						lastNull = i;
 					} else if (i === pointsLength - 1) { // last value
-						segments.push(points.slice(lastNull + 1, i + 1));
+						segment = points.slice(lastNull + 1, i + 1);
+						segment.endingPoint = null;
+						segments.push(segment);
 					}
 				});
 			}
@@ -1515,6 +1520,14 @@ Series.prototype = {
 			}
 		});
 
+		if ((step === 'left+') && segment.endingPoint) {
+			segmentPath.push(
+				L,
+				segment.endingPoint.plotX,
+				segmentPath[segmentPath.length - 1] // last Y plotted
+			);
+		}
+
 		return segmentPath;
 	},
 
@@ -1525,21 +1538,34 @@ Series.prototype = {
 		var series = this,
 			graphPath = [],
 			segmentPath,
+			stepLeftP = series.options.step === 'left+',
+			nSegments = (series.segments || []).length,
 			singlePoints = []; // used in drawTracker
 
 		// Divide into segments and build graph and area paths
-		each(series.segments, function (segment) {
+		each(series.segments, function (segment, i) {
 
 			segmentPath = series.getSegmentPath(segment);
 
 			// add the segment to the graph, or a single point for tracking
-			if (segment.length > 1) {
+			if ((segment.length > 1) || stepLeftP) {
 				graphPath = graphPath.concat(segmentPath);
 			} else {
 				singlePoints.push(segment[0]);
 			}
 		});
+		
 
+		if (stepLeftP && graphPath.length) {
+			// Add another line going from the last point vertically all the way to the right
+			// of the graph.
+			var finalPointY = graphPath[graphPath.length - 1];
+			graphPath.push(
+				L,
+				series.xAxis.len,
+				finalPointY
+			);
+		}
 		// Record it for use in drawGraph and drawTracker, and return graphPath
 		series.singlePoints = singlePoints;
 		series.graphPath = graphPath;
